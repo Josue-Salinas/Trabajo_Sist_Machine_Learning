@@ -2,4 +2,3 @@ flask
 numpy
 pillow
 scikit-learn
-pandas

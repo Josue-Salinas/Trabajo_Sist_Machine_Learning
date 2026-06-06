@@ -4,16 +4,19 @@ import base64
 import io
 from PIL import Image
 from sklearn.datasets import fetch_openml
+from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 
 app = Flask(__name__)
 
-mnist = fetch_openml("mnist_784", version=1)
+mnist = fetch_openml("mnist_784", version=1, as_frame=False)
 X = mnist.data / 255.0
 y = mnist.target.astype(int)
 
-model = MLPClassifier(hidden_layer_sizes=(128,), max_iter=10, verbose=False)
-model.fit(X, y)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = MLPClassifier(hidden_layer_sizes=(128, 128), max_iter=20)
+model.fit(X_train, y_train)
 
 def preprocess(img_b64):
     if "," in img_b64:
@@ -27,102 +30,85 @@ HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Reconocimiento de Números mediante Escritura</title>
+<title>Predicción de números mediante imágenes</title>
 <style>
 body{
 margin:0;
 font-family:Arial;
-background:linear-gradient(135deg,#0f0f0f,#1a1a2e,#16213e);
+background:linear-gradient(135deg,#0f172a,#1e293b,#0f172a);
 color:white;
 text-align:center;
 }
 
 h1{
 margin-top:20px;
-color:#00ffe1;
-text-shadow:0px 0px 10px #00ffe1;
+color:#38bdf8;
+text-shadow:0px 0px 10px #38bdf8;
 }
 
-p{
-color:#bbb;
+.container{
+margin-top:40px;
 }
 
-canvas{
-background:black;
-border:3px solid #00ffe1;
-border-radius:10px;
-box-shadow:0px 0px 15px #00ffe1;
+input{
+padding:10px;
+background:#1f2937;
+color:white;
+border-radius:8px;
+border:1px solid #38bdf8;
 }
 
 button{
-margin:10px;
-padding:10px 20px;
+margin-top:20px;
+padding:12px 22px;
 border:none;
-border-radius:8px;
+border-radius:10px;
+background:#38bdf8;
+color:black;
+font-weight:bold;
 cursor:pointer;
-font-size:16px;
 }
 
-.btn1{background:#00ffe1;color:black;font-weight:bold;}
-.btn2{background:#ff4d6d;color:white;}
+button:hover{
+transform:scale(1.05);
+}
 
 #out{
-font-size:28px;
-color:#ffd369;
+font-size:50px;
 margin-top:20px;
+color:#facc15;
+text-shadow:0px 0px 10px #facc15;
 }
 </style>
 </head>
 <body>
 
-<h1>Reconocimiento de Números mediante Escritura</h1>
-<p>Dibuja un número del 0 al 9</p>
+<h1>Predicción de números mediante imágenes</h1>
 
-<canvas id="c" width="280" height="280"></canvas>
+<div class="container">
+<input type="file" id="file" accept="image/*"><br>
+<button onclick="predict()">Predecir</button>
 
-<br>
-
-<button class="btn1" onclick="predict()">Predecir</button>
-<button class="btn2" onclick="clearC()">Limpiar</button>
-
-<div id="out">Resultado: -</div>
+<div id="out">-</div>
+</div>
 
 <script>
-let c=document.getElementById("c");
-let ctx=c.getContext("2d");
-
-ctx.strokeStyle="#00ffe1";
-ctx.lineWidth=18;
-ctx.lineCap="round";
-
-let drawing=false;
-
-c.onmousedown=()=>{drawing=true;ctx.beginPath();}
-c.onmouseup=()=>{drawing=false;}
-c.onmousemove=(e)=>{
-if(!drawing)return;
-ctx.lineTo(e.offsetX,e.offsetY);
-ctx.stroke();
-}
-
-function clearC(){
-ctx.fillStyle="black";
-ctx.fillRect(0,0,280,280);
-document.getElementById("out").innerText="Resultado: -";
-}
-
 async function predict(){
-let img=c.toDataURL();
+let file=document.getElementById("file").files[0];
+let reader=new FileReader();
+
+reader.onload=async function(){
 let r=await fetch("/predict",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({image:img})
+body:JSON.stringify({image:reader.result})
 });
 let d=await r.json();
-document.getElementById("out").innerText="Resultado: " + d.predicted_digit;
+document.getElementById("out").innerText=d.predicted_digit;
 }
 
-clearC();
+reader.readAsDataURL(file);
+}
 </script>
 
 </body>
@@ -137,11 +123,7 @@ def home():
 def predict():
     x = preprocess(request.get_json()["image"])
     p = model.predict(x)[0]
-    prob = np.max(model.predict_proba(x))
-    return jsonify({
-        "predicted_digit": int(p),
-        "confidence": float(prob)
-    })
+    return jsonify({"predicted_digit": int(p)})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
